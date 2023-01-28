@@ -1,0 +1,419 @@
+# Inspred by different kind of platformer by Cristopher TE
+# https://openprocessing.org/sketch/554613
+
+from cmu_112_graphics import *
+from dataclasses import make_dataclass
+import random, math
+
+
+W = 2 #wall
+S = 1 #start
+E = 3 #end
+F = 4 #obsatcle / fire 
+K = 5 #key
+V = 6 #vertical wall
+H = 7 #horizontal wall
+
+
+
+levels = [
+    [],
+
+    #level1
+    [[W, W, W, W, W, W, W], 
+    [W, S, 0, 0, 0, 0, W], 
+    [W, W, W, W, W, 0, W], 
+    [W, 0, 0, 0, 0, 0, W], 
+    [W, 0, W, W, W, W, W], 
+    [W, 0, 0, 0, 0, E, W], 
+    [W, W, W, W, W, W, W]],
+
+    #level 2
+    [[W, W, W, W, W, W, W, W, W, W, W], 
+    [W, S, 0, 0, 0, 0, 0, 0, 0, 0, W], 
+    [W, W, W, W, W, W, W, W, W, 0, W], 
+    [W, 0, 0, 0, 0, 0, 0, 0, 0, 0, W], 
+    [W, 0, W, F, W, F, W, W, W, W, W], 
+    [W, 0, 0, 0, 0, 0, 0, 0, 0, 0, W], 
+    [W, W, W, W, W, W, W, F, W, 0, W], 
+    [W, 0, 0, 0, 0, 0, 0, 0, 0, 0, W], 
+    [W, 0, W, F, W, F, W, W, W, W, W], 
+    [W, 0, 0, 0, 0, 0, 0, 0, 0, E, W], 
+    [W, W, W, W, W, W, W, W, W, W, W]],
+
+    #level 3
+    [[W, W, W, W, W, W, W, W, W, W, W, W], 
+    [W, S, 0, 0, 0, 0, 0, 0, W, K, W, W], 
+    [W, 0, W, K, W, 0, W, 0, W, 0, W, W],
+    [W, 0, W, W, W, 0, W, K, 0, 0, 0, W], 
+    [W, 0, W, K, W, W, W, 0, W, W, W, W], 
+    [W, 0, W, 0, K, 0, 0, 0, 0, 0, K, W], 
+    [W, 0, 0, 0, 0, W, W, 0, W, W, 0, W], 
+    [W, 0, W, W, 0, W, K, 0, 0, W, 0, W], 
+    [W, 0, W, W, 0, W, W, 0, W, K, 0, W], 
+    [W, 0, W, W, K, W, 0, 0, W, W, 0, W], 
+    [W, K, 0, 0, 0, 0, 0, 0, 0, 0, E, W], 
+    [W, W, W, W, W, W, W, W, W, W, W, W]]
+
+    # level 4 and above are randomly generated
+]
+
+#the player class is shared by both the player and the enemy (auto-chasing)
+class Player: 
+    def __init__(self, x, y, playerW, playerH, gravity, isPlayer):
+        self.gravity = gravity #gravity is moved up and down 
+        self.xspeed = 0 
+        self.yspeed = 0
+        self.playerW = playerW
+        self.playerH = playerH
+        self.isPlayer = isPlayer #to distinguish player and enemy 
+
+        self.x = x
+        self.y = y
+
+        self.tlX = self.x - self.playerW / 2 # top left
+        self.tlY = self.y - self.playerH / 2
+        self.brX = self.x + self.playerW / 2 # bottom right 
+        self.brY = self.y + self.playerH / 2
+
+    def move(self, app):
+        self.x += self.xspeed
+        self.y += self.yspeed
+
+        self.tlX = self.x - self.playerW / 2 # top left
+        self.tlY = self.y - self.playerH / 2
+        self.brX = self.x + self.playerW / 2 # bottom right 
+        self.brY = self.y + self.playerH / 2
+
+    def takeStep(self, app):
+        self.yspeed += self.gravity #gravity increases y speed 
+        # enforce speedlimit
+        if self.yspeed < -(app.speedlimit): self.yspeed = -(app.speedlimit)
+        if self.yspeed > app.speedlimit: self.yspeed = app.speedlimit
+        #current position of the center of the player 
+        row = math.floor(self.y / app.blockSize)
+        col = math.floor(self.x / app.blockSize) 
+
+        if self.isPlayer:
+            #key is taken by player 
+            if app.board[row][col] == K:
+                app.board[row][col] = 0  
+                app.keysTaken += 1
+
+            #a level is cleared when all the keys are taken and player reaches desitnation
+            if app.board[row][col] == E and app.keysTaken == app.keys: # when all the keys are taken
+                app.levelCleared = True 
+                return
+            
+            # when the player run into lava--> game over
+            if app.board[row][col] == F or \
+                (app.board[row+1][col] == F and self.brY >= (row+1) * app.blockSize) or \
+                (app.board[row][col+1] == F and self.brX >= (col+1) * app.blockSize) or \
+                (app.board[row-1][col] == F and self.tlY <= row * app.blockSize) or \
+                (app.board[row][col-1] == F and self.tlX <= col * app.blockSize):
+                app.gameOver = True 
+                return 
+        
+        # when a player hits a wall
+        if self.xspeed > 0 and self.brX >= (col+1) * app.blockSize: #move right 
+            if app.board[row][col+1] == W : # when hit a wall
+                if self.isPlayer: #bounce
+                    if (self.xspeed > 4): self.xspeed = - self.xspeed/2
+                    else: self.xspeed = 0
+                else:
+                    self.xspeed = - self.xspeed
+
+                self.x = (col+1) * app.blockSize - self.playerW / 2 #move away from the wall
+            
+            #hit a wall from bottom 
+            if self.yspeed > 0 and app.board[row+1][col+1] == W  and self.brY >= (row+1) * app.blockSize:
+                if self.yspeed > 8: # when y speed is too big 
+                    self.yspeed = - self.yspeed / 8
+                else: 
+                    self.yspeed = 0
+                self.y = (row+1) * app.blockSize - self.playerH / 2
+            #hit a wall from top 
+            elif self.yspeed < 0 and app.board[row-1][col+1] == W and self.tlY <= row * app.blockSize:
+                if self.yspeed < -8: # when y speed is too big 
+                    self.yspeed = - self.yspeed / 8
+                else: 
+                    self.yspeed = 0
+                self.y = row * app.blockSize + self.playerH / 2
+
+        elif self.xspeed < 0 and self.tlX <= col * app.blockSize: #move left
+            if (app.board[row][col-1] == W):#bounce
+                if self.isPlayer:
+                    if (self.xspeed > 4): self.xspeed = - self.xspeed/2
+                    else: self.xspeed = 0
+                else:
+                    self.xspeed = - self.xspeed
+
+                self.x = col * app.blockSize + self.playerW / 2
+            #hit a wall at the bottom 
+            if self.yspeed > 0 and app.board[row+1][col-1] == W  and self.brY >= (row+1) * app.blockSize:
+                if self.yspeed > 8: # when y speed is too big 
+                    self.yspeed = - self.yspeed / 8
+                else: 
+                    self.yspeed = 0
+                self.y = (row+1) * app.blockSize - self.playerH / 2
+            # hit a wall at top 
+            elif self.yspeed < 0 and app.board[row-1][col-1] == W and self.tlY <= row * app.blockSize:
+                if self.yspeed < -8: # when y speed is too big 
+                    self.yspeed = - self.yspeed / 8
+                else: 
+                    self.yspeed = 0
+                self.y = row * app.blockSize + self.playerH / 2
+
+
+        else: # move vertically 
+            #hit a wall at bottom 
+            if self.yspeed > 0 and app.board[row+1][col] == W and self.brY >= (row+1) * app.blockSize:
+                if self.yspeed > 8: # when y speed is too big 
+                    self.yspeed = - self.yspeed / 8
+                else: 
+                    self.yspeed = 0
+                self.y = (row+1) * app.blockSize - self.playerH / 2
+            #hit a wall at top
+            elif self.yspeed < 0 and app.board[row-1][col] == W and self.tlY <= row * app.blockSize:
+                if self.yspeed < -8: # when y speed is too big 
+                    self.yspeed = - self.yspeed / 8
+                else: 
+                    self.yspeed = 0
+                self.y = row * app.blockSize + self.playerH / 2
+        
+
+
+#initialize the parameters 
+def appStarted(app):
+    app.waitingForFirstKeyPress = True
+    app.level = 1                                                                                            
+    app.gravityLimit = 4
+    app.speedlimit = 10 
+    #app.bgImage = app.loadImage('background.gif')
+    reset(app)
+
+#when a cell is visited, for generating a random maze
+def visit(app, i, j):
+    
+    di = [-1, 0, 1, 0] # 4 neighbors: up, left, down, right
+    dj = [0, -1, 0, 1]
+    app.board[i][j] = -1 #visited
+
+    for d in range(4):
+        i2 = i + di[d]
+        j2 = j + dj[d]
+        
+        if app.board[i2][j2] == V or app.board[i2][j2] == H:
+            app.wallList.append((i2,j2))
+
+#reset the game 
+def reset(app):
+    app.keysTaken = 0
+    app.stepsTaken = 0
+    if (app.level <= 3): # predefined boards
+        app.board = [row[:] for row in levels[app.level]] # clone the board
+        app.size = len(app.board)
+        if app.level == 3: app.keys = 10
+        else: app.keys = 0
+    else: # randomly generate boards with Prim's algrothim
+        if app.level <= 6: n = app.level*2+1 # number of rows and cols of board
+        else: n = 13
+        app.size = n
+        app.keys = 2*app.level # keys to be collected
+        app.board = [[0 for col in range(n)] for row in range(n)] # initially all 0
+        for i in range(n):
+            for j in range(n): 
+                if i%2 == 0 and j%2 == 0: app.board[i][j] = W # fixed walls
+                if i%2 != 0 and j%2 == 0: app.board[i][j] = V # vertical walls
+                if i%2 == 0 and j%2 != 0: app.board[i][j] = H #horizontal walls 
+                if i==0 or i==n-1 or j==0 or j==n-1: app.board[i][j] = W #the boundary walls
+        app.wallList = [] #list of the walls to be processed
+        visit(app, 1, 1) # visit first cell
+
+        while (len(app.wallList) != 0):
+            (i,j) = app.wallList.pop(random.randrange(len(app.wallList))) # randomly choose a wall
+            # if only one cell on both sides of the wall is visited, removed wall and visit the unvisited cell
+            if app.board[i][j] == V and app.board[i][j-1] != app.board[i][j+1]:
+                app.board[i][j] = 0
+                if app.board[i][j-1] == 0: visit(app, i, j-1)
+                else: visit(app, i, j+1)
+            if app.board[i][j] == H and app.board[i-1][j] != app.board[i+1][j]:
+                app.board[i][j] = 0
+                if app.board[i-1][j] == 0: visit(app, i-1, j)
+                else: visit(app, i+1, j)
+
+        # finalize the board
+        for i in range(n):
+            for j in range(n): 
+                if app.board[i][j] == -1: app.board[i][j] = 0
+                if app.board[i][j] == V or app.board[i][j] == H: 
+                    r = random.random()
+                    if r < 0.3: # change some walls to space
+                        app.board[i][j] = 0
+                    elif r < 0.4 and (i != 2 or j != 1): # change some walls to lava
+                        app.board[i][j] = F
+                    else:
+                        app.board[i][j] = W
+
+        app.board[1][1] = S
+        app.board[n-2][n-2] = E
+
+        # change some space to keys
+        spaceList = []
+        for i in range(n):
+            for j in range(n): 
+                if app.board[i][j] == 0: spaceList.append((i,j))
+        for (i,j) in random.sample(spaceList, app.keys):
+            app.board[i][j] = K
+
+        #set up start and end cell    
+        
+        app.size = len(app.board)
+
+    app.blockSize = app.width / len(app.board)
+    
+    #PLAYER, ENEMY
+    app.player = Player(app.blockSize * 1.5, app.blockSize * 1.5, \
+        app.blockSize / 3, app.blockSize / 3, app.gravityLimit, True)
+    app.enemy = Player(app.blockSize * (app.size - 1.5), app.blockSize * (app.size - 1.5), \
+        app.blockSize / 3, app.blockSize / 3, - app.gravityLimit, False )
+
+    app.alive = True 
+    app.levelCleared = False
+    app.gameOver = False
+
+
+def keyPressed(app, event):
+    if (app.waitingForFirstKeyPress):
+        app.waitingForFirstKeyPress = False
+    # when gamer over, press r key to restart
+    if app.gameOver and event.key == 'r':
+        app.gameOver = False 
+        reset(app)
+    # when pass a level, press n key for the next level
+    if app.levelCleared and event.key == 'n': 
+        app.levelCleared = False
+        app.level += 1
+        reset(app)
+
+    if app.gameOver or app.levelCleared:
+        return
+
+    elif (event.key == 'Left'):  app.player.xspeed = -(app.speedlimit)
+    elif (event.key == 'Right'): app.player.xspeed = app.speedlimit
+    elif (event.key == 'Space'): app.player.gravity *= -1 
+
+
+def timerFired(app):
+    if app.gameOver or app.levelCleared or app.waitingForFirstKeyPress: return
+    app.player.takeStep(app)
+
+                             
+    # enemey chase the player 
+    if app.stepsTaken % 20 == 0:
+        if app.player.x > app.enemy.x: app.enemy.xspeed = app.speedlimit
+        elif app.player.x < app.enemy.x: app.enemy.xspeed = -(app.speedlimit)
+        if app.player.y > app.enemy.y: app.enemy.gravity = app.gravityLimit
+        elif app.player.y < app.enemy.y: app.enemy.gravity = - app.gravityLimit
+                
+    app.enemy.takeStep(app)
+    app.player.move(app)
+    app.enemy.move(app)
+    
+
+    #enemey catches the player 
+    xDist = app.player.x - app.enemy.x
+    yDist = app.player.y - app.enemy.y
+    dist = math.sqrt(xDist*xDist + yDist*yDist)
+
+    if dist < app.player.playerH:
+        app.gameOver = True 
+        
+    app.stepsTaken += 1
+
+   
+
+def drawPlayer(app, canvas):
+    canvas.create_oval(app.player.tlX, app.player.tlY, app.player.brX, 
+    app.player.brY, fill='green', outline = '')
+
+def drawEnemy(app, canvas): # start from the end, only move left and right  at the bottom row
+     canvas.create_oval(app.enemy.tlX, app.enemy.tlY, app.enemy.brX, 
+     app.enemy.brY, fill='red')
+
+def drawBoard(app, canvas):
+    for i in range(len(app.board)):
+        for j in range(len(app.board[i])):
+            if app.board[i][j] == W:
+                canvas.create_rectangle(app.blockSize * j, app.blockSize * i,
+                app.blockSize * (j+1), app.blockSize * (i+1), fill ='black',
+                 outline = '')
+            elif app.board[i][j] == E:
+                if app.keysTaken == app.keys:
+                    canvas.create_rectangle(app.blockSize * j, app.blockSize * i,
+                    app.blockSize * (j+1), app.blockSize * (i+1), fill ='green', 
+                    outline = '')
+                else:
+                    canvas.create_rectangle(app.blockSize * j, app.blockSize * i,
+                    app.blockSize * (j+1), app.blockSize * (i+1), fill ='pale green', 
+                    outline = '')
+            elif app.board[i][j] == F:
+                canvas.create_rectangle(app.blockSize * j, app.blockSize * i,
+                app.blockSize * (j+1), app.blockSize * (i+1), fill ='red', 
+                outline = '')
+            elif app.board[i][j] == K:
+                canvas.create_rectangle(app.blockSize * j, app.blockSize * i,
+                app.blockSize * (j+1), app.blockSize * (i+1), fill ='blue', 
+                outline = '')
+            else:
+                canvas.create_rectangle(app.blockSize * j, app.blockSize * i,
+                app.blockSize * (j+1), app.blockSize * (i+1), fill ='white', 
+                outline = '')
+    # keep track of the level number            
+    canvas.create_text(app.width-120, app.blockSize / 2,
+                           text= f'Level: {app.level} \nKeys Left: {app.keys-app.keysTaken}',
+                           font='Avenir 20 bold', fill = 'white')
+
+def drawNextLevel(app, canvas):
+    if (app.levelCleared):
+        canvas.create_rectangle(app.width/4, app.height*3/8, app.width*3/4, app.height*5/8,
+        fill = 'gray', outline = '' )
+        canvas.create_text(app.width/2, app.height/2-20, text='Next Level!',
+                           font='Avenir 26 bold', fill = 'red')
+        canvas.create_text(app.width/2, app.height/2+20,
+                           text='Press N to continue!',
+                           font='Avenir 26 bold', fill = 'red')
+def drawGameOver(app, canvas):
+    if (app.gameOver):
+        canvas.create_rectangle(app.width/4, app.height*3/8, app.width*3/4, app.height*5/8,
+        fill = 'gray', outline = '' )
+        canvas.create_text(app.width/2, app.height/2 - 20, text='Oops!',
+                           font='Avenir 26 bold', fill = 'red')
+        canvas.create_text(app.width/2, app.height/2+20,
+                           text='Press R to restart!',
+                           font='Avenir 26 bold', fill = 'red')
+
+  
+#starting page instruction
+def redrawAll(app, canvas):
+
+    if (app.waitingForFirstKeyPress):
+        
+        canvas.create_text(app.width/2, app.height/2 - 200,
+                           text= 'Maze Explorer',
+                           font = 'Avenir 50 bold', fill ='red')
+        canvas.create_text(app.width/2+5, app.height/2 - 200,
+                           text= 'Maze Explorer',
+                           font = 'Avenir 50 bold', fill ='black')
+        canvas.create_text(app.width/2, app.height/2,
+                           text='Press any key to start!\nPress Left or Right to move.\nPress Space to reverse gravity.\nCollect all (blue) keys before reaching the (green) destination.\nAvoid (red) lava and enemy along the way.',
+                           font='Avenir 26')
+    else:
+        drawBoard(app, canvas)
+        drawPlayer(app, canvas)
+        drawEnemy(app, canvas)
+        drawNextLevel(app,canvas)
+        drawGameOver(app, canvas)
+        
+
+runApp(width=800, height=800)
